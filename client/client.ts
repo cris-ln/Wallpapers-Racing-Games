@@ -1,198 +1,191 @@
-//////////////////// Imports ////////////////////
-import { PublicKey } from "@solana/web3.js";
+// ─────────────────────────────────────────────────────────────────
+// CLIENT.TS — WRG Wallpaper Gaming Marketplace
+// Script para interactuar con el programa desde Solana Playground.
+// Ejecuta cada sección una por una cambiando la variable ACCION.
+// ─────────────────────────────────────────────────────────────────
 
-////////////////// Constantes ////////////////////
-const n_biblioteca = "Alejandria"; // Nombre de la biblioteca
-const owner = pg.wallet.publicKey; // Wallet
+// ── Cambia este valor para elegir qué instrucción ejecutar ────────
+// Opciones: "createCreator" | "listWallpaper" | "addToWishlist" | "removeFromWishlist" | "closeListing" | "fetchAll"
+const ACCION = "fetchAll";
 
-//////////////////// Client Test Logs ////////////////////
-console.log("My address:", owner.toString()); // Ver el adress
-const balance = await pg.connection.getBalance(owner);
-console.log(`My balance: ${balance / web3.LAMPORTS_PER_SOL} SOL`); // Ver el la cantidad de tokens de solana
+// ── Dirección del wallpaper (se obtiene después de listWallpaper) ─
+const WALLPAPER_ADDRESS = "CpojyhaDnwPKWFGDCMWogKsk5cbyiTYdKUjH3YBVrqD";
 
-//////////////////// FUNCIONES ////////////////////
+// ─────────────────────────────────────────────────────────────────
+// Derivar PDAs
+// ─────────────────────────────────────────────────────────────────
+const [creadorPDA] = web3.PublicKey.findProgramAddressSync(
+  [Buffer.from("creator"), pg.wallet.publicKey.toBuffer()],
+  pg.PROGRAM_ID
+);
 
-//////////////////// OBTENER PDAs ////////////////////
-/*
-Un PDA representa una cuenta que es controlada por un programa (smart contract), y una de sus principales caracteristicas es no contar 
-con una clave privada con la cual firmar al momento de realizar alguna transaccion (transferencia, escritura o modificacion de un dato) 
-dentro del contrato. En su lugar, emplea direcciones generadas deterministicamente, es decir, recreables a partir de semillas. 
-Las semillas pueden ser varias y de diferentes tipos, puede depender desde un valor predefenidio (como es usualmente el valor de la semilla 1), 
-hasta de direcciones secundarias (como la del caller u otra cuenta).
+const [wishlistPDA] = web3.PublicKey.findProgramAddressSync(
+  [Buffer.from("wishlist"), pg.wallet.publicKey.toBuffer()],
+  pg.PROGRAM_ID
+);
 
-Es por ello que para llamar desde el front una funcion del Solana Program desplegado es necesario contar con las semillas en su orden y tipo 
-correspondiente. Se recomienda no usar valores sencillos (que no solo dependan de valores predefinidos), pero tampoco se encuentren 
-compuestas de valores redundantes (como el program id o alguna cuenta padre).
-*/
-//////////////////// Biblioteca ////////////////////
-function pdaBiblioteca(n_biblioteca) {
-  return PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("biblioteca"), // Semilla 1: b"biblioteca"
-      Buffer.from(n_biblioteca), // Semilla 2: nombre de la biblioteca  -> String
-      owner.toBuffer(), // Semilla 3: wallet -> Pubkey
-    ],
-    pg.PROGRAM_ID // Program ID: Siempre va al final
+console.log("── Direcciones ──────────────────────────────");
+console.log("Tu wallet:  ", pg.wallet.publicKey.toBase58());
+console.log("PDA creador:", creadorPDA.toBase58());
+console.log("PDA wishlist:", wishlistPDA.toBase58());
+console.log("─────────────────────────────────────────────");
+
+// ─────────────────────────────────────────────────────────────────
+// INSTRUCCIÓN 1: createCreator
+// Crea el perfil on-chain del artista.
+// Solo se puede ejecutar una vez por wallet.
+// ─────────────────────────────────────────────────────────────────
+if (ACCION === "createCreator") {
+  const tx = await pg.program.methods
+    .createCreator("Lamborghini Gallardo 2005")
+    .accounts({
+      artista: pg.wallet.publicKey,
+      creador: creadorPDA,
+      systemProgram: web3.SystemProgram.programId,
+    })
+    .rpc();
+
+  console.log("✅ createCreator exitoso!");
+  console.log("Tx:", tx);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// INSTRUCCIÓN 2: listWallpaper
+// Lista un nuevo wallpaper en el marketplace.
+// Requiere tener perfil de creador (createCreator).
+// ─────────────────────────────────────────────────────────────────
+if (ACCION === "listWallpaper") {
+  // Obtenemos el índice actual del creador para derivar la PDA correcta
+  const creadorCuenta = await pg.program.account.creador.fetch(creadorPDA);
+  const indice = creadorCuenta.totalWallpapers;
+  const indiceBuffer = indice.toArrayLike(Buffer, "le", 8);
+
+  const [wallpaperPDA] = web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("wallpaper"), pg.wallet.publicKey.toBuffer(), indiceBuffer],
+    pg.PROGRAM_ID
   );
-}
-//////////////////// Libro ////////////////////
-function pdaLibro(n_libro) {
-  return PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("libro"), // Semilla 1: b"libro"
-      Buffer.from(n_libro), // Semilla 2: nombre del libro: -> String
-      owner.toBuffer(), // Semilla 3: wallet -> Pubkey
-    ],
-    pg.PROGRAM_ID // Program ID: Siempre va al final
-  );
-}
 
-//////////////////// Crear Biblioteca ////////////////////
-// Para crear la biblioteca solo es necesario el nombre que tendra
-async function crearBiblioteca(n_biblioteca) {
-  const [pda_biblioteca] = pdaBiblioteca(n_biblioteca); // Primero se obtiene la cuenta de la biblioteca
+  console.log("PDA wallpaper:", wallpaperPDA.toBase58());
 
-  const txHash = await pg.program.methods // mediante la libreria pg (solana playground) se acceden a los metodos del programa
-    .crearBiblioteca(n_biblioteca) // crear biblioteca
+  const tx = await pg.program.methods
+    .listWallpaper(
+      "Cyberpunk Night",       // título
+      "Cyberpunk 2077",        // juego
+      new BN(50000000),        // precio: 0.05 SOL en lamports
+      new BN(100),             // ediciones totales
+      "https://arweave.net/test" // URI de la imagen
+    )
     .accounts({
-      // Se agregan las cuentas de las que depende (Contexto del struct NuevaBiblioteca)
-      owner: owner,
-      biblioteca: pda_biblioteca,
+      artista: pg.wallet.publicKey,
+      creador: creadorPDA,
+      wallpaper: wallpaperPDA,
+      systemProgram: web3.SystemProgram.programId,
     })
     .rpc();
 
-  console.log("txHash: ", txHash);
+  console.log("✅ listWallpaper exitoso!");
+  console.log("Tx:", tx);
+  console.log("⚠️  Guarda esta dirección del wallpaper:", wallpaperPDA.toBase58());
 }
 
-//////////////////// Agregar Libro ////////////////////
-// Para crear un libro solo es necesario pasar el libro y el numero de paginas. El estado se define automaticamente en el programa
-async function agregarLibro(n_libro, paginas) {
-  // Agregar Libro
-  const [pda_libro] = pdaLibro(n_libro); // se determina la cuenta del libro
-  const [pda_biblioteca] = pdaBiblioteca(n_biblioteca); // se obtiene la cuenta de la biblioteca
+// ─────────────────────────────────────────────────────────────────
+// INSTRUCCIÓN 3: addToWishlist
+// Añade un wallpaper a la wishlist del usuario.
+// Usa la dirección de WALLPAPER_ADDRESS arriba.
+// ─────────────────────────────────────────────────────────────────
+if (ACCION === "addToWishlist") {
+  const wallpaperPDA = new web3.PublicKey(WALLPAPER_ADDRESS);
 
-  const txHash = await pg.program.methods
-    .agregarLibro(n_libro, paginas) // agregar_libro
+  const tx = await pg.program.methods
+    .addToWishlist()
     .accounts({
-      // cuentas del contexto
-      owner: owner,
-      libro: pda_libro,
-      biblioteca: pda_biblioteca,
+      usuario: pg.wallet.publicKey,
+      wishlist: wishlistPDA,
+      wallpaper: wallpaperPDA,
+      systemProgram: web3.SystemProgram.programId,
     })
     .rpc();
 
-  console.log("txHash: ", txHash);
+  console.log("✅ addToWishlist exitoso!");
+  console.log("Tx:", tx);
 }
 
-//////////////////// Alternar estado ////////////////////
-// Para cambiar el estado de true a false o visceversa solo se necesita el nombre del libro
-async function cambiarEstado(n_libro) {
-  // Modificar Libro
-  const [pda_libro] = pdaLibro(n_libro); // se determina la cuenta del libro
-  const [pda_biblioteca] = pdaBiblioteca(n_biblioteca); // se obtiene la cuenta de la biblioteca
+// ─────────────────────────────────────────────────────────────────
+// INSTRUCCIÓN 4: removeFromWishlist
+// Elimina un wallpaper de la wishlist del usuario.
+// ─────────────────────────────────────────────────────────────────
+if (ACCION === "removeFromWishlist") {
+  const wallpaperPDA = new web3.PublicKey(WALLPAPER_ADDRESS);
 
-  const txHash = await pg.program.methods
-    .alternarEstado(n_libro) // alternar_estado
+  const tx = await pg.program.methods
+    .removeFromWishlist()
     .accounts({
-      // cuentas del contexto
-      owner: owner,
-      libro: pda_libro,
-      biblioteca: pda_biblioteca,
+      usuario: pg.wallet.publicKey,
+      wishlist: wishlistPDA,
+      wallpaper: wallpaperPDA,
+      systemProgram: web3.SystemProgram.programId,
     })
     .rpc();
 
-  console.log("txHash: ", txHash);
+  console.log("✅ removeFromWishlist exitoso!");
+  console.log("Tx:", tx);
 }
 
-//////////////////// Eliminar Libro ////////////////////
-// Para eliminar un libro solo es necesario proporcionar el nombre del libro a eliminar de la biblioteca
-async function eliminarLibro(n_libro) {
-  // Eliminar Libro
-  const [pda_libro] = pdaLibro(n_libro); // se determina la cuenta del libro
-  const [pda_biblioteca] = pdaBiblioteca(n_biblioteca); // se obtiene la cuenta de la biblioteca
-  const txHash = await pg.program.methods
-    .eliminarLibro(n_libro) // eliminar_libro
+// ─────────────────────────────────────────────────────────────────
+// INSTRUCCIÓN 5: closeListing
+// Cierra el listado del wallpaper y devuelve el rent al artista.
+// ─────────────────────────────────────────────────────────────────
+if (ACCION === "closeListing") {
+  const wallpaperPDA = new web3.PublicKey(WALLPAPER_ADDRESS);
+
+  const tx = await pg.program.methods
+    .closeListing()
     .accounts({
-      // cuentas del contexto
-      owner: owner,
-      libro: pda_libro,
-      biblioteca: pda_biblioteca,
+      artista: pg.wallet.publicKey,
+      wallpaper: wallpaperPDA,
+      creador: creadorPDA,
+      systemProgram: web3.SystemProgram.programId,
     })
     .rpc();
 
-  console.log("txHash: ", txHash);
+  console.log("✅ closeListing exitoso!");
+  console.log("Tx:", tx);
 }
 
-//////////////////// Ver Libros ////////////////////
-/*
- Anteriormente, en la version anterior de la biblioteca, esta instruccion se encotraba implementada dentro del Solana Program, pero... ¿porque ya no?
- En la prinmera version de la biblioteca los libros eran structs contenidos en un vector dentro de la cuenta biblioteca. Al ser elementos de un vector 
- su visualizacion era mas simple. En este caso, cada libro se encuentra definido por una cuenta, por lo que visualizar informacion de multiples cuentas 
- desde el Solana Program es ineficiente a comparacion de hacerlo desde el frontend. 
+// ─────────────────────────────────────────────────────────────────
+// FETCH ALL — Lee todas las cuentas existentes
+// ─────────────────────────────────────────────────────────────────
+if (ACCION === "fetchAll") {
+  console.log("\n── Creadores ────────────────────────────────");
+  const creadores = await pg.program.account.creador.all();
+  creadores.forEach((c) => {
+    console.log("Nombre:", c.account.nombre);
+    console.log("Owner:", c.account.owner.toBase58());
+    console.log("Total wallpapers:", c.account.totalWallpapers.toString());
+    console.log("PDA:", c.publicKey.toBase58());
+    console.log("────────────────────────────────────────────");
+  });
 
-Para lograr hacerlo es necesario realizar los siguientes pasos:
+  console.log("\n── Wallpapers ───────────────────────────────");
+  const wallpapers = await pg.program.account.wallpaper.all();
+  wallpapers.forEach((w) => {
+    console.log("Título:", w.account.titulo);
+    console.log("Juego:", w.account.juego);
+    console.log("Precio:", w.account.precio.toString(), "lamports");
+    console.log("Ediciones:", w.account.vendidas?.toString() ?? "0", "/", w.account.total.toString());
+    console.log("En venta:", w.account.enVenta);
+    console.log("PDA:", w.publicKey.toBase58());
+    console.log("────────────────────────────────────────────");
+  });
 
-1. Determinar el PDA de la biblioteca 
-2. Obtener el vector de libros (direcciones)
-3. Por cada direccion, obtener la informacion del libro 
-4. Mostrarla con console.log
-*/
-async function verLibros(n_biblioteca) {
-  // Ver Libros
-  const [pda_biblioteca] = pdaBiblioteca(n_biblioteca); // se obtiene la cuenta de la biblioteca
-
-  try {
-    // Se accede a los datos de la cuenta (biblioteca)
-    const bibliotecaAccount = await pg.program.account.biblioteca.fetch(
-      pda_biblioteca
-    );
-
-    // Mediante el .length se obtiene el tamaño del vector de libros en laa biblioteca
-    const numero_libros = bibliotecaAccount.libros.length;
-
-    // Se verifican si hay libros en el vector
-    if (!bibliotecaAccount.libros || numero_libros === 0) {
-      console.log("Biblioteca vacía");
-      return;
-    }
-
-    // Se imprime el valor en la consola
-    console.log("Cantidad de libros:", numero_libros);
-
-    // Se itera cada cuenta (libro) del vector (biblioteca) y se obtiene la informacion asociada
-    for (let i = 0; i < numero_libros; i++) {
-      const libroKey = bibliotecaAccount.libros[i];
-
-      const libroAccount = await pg.program.account.libro.fetch(libroKey);
-
-      // Finaliza mostrando en la terminal la informacion de cada libro
-      console.log(
-        `Libro #${i + 1}: \n * Nombre: ${libroAccount.nombre} \n * Páginas: ${
-          libroAccount.paginas
-        } \n * Biblioteca: ${
-          libroAccount.biblioteca
-        } \n * Disponible: ${
-          libroAccount.disponible
-        } \n * Dirección(PDA): ${libroKey.toBase58()}`
-      );
-    }
-  } catch (error) {
-    console.error("Error viendo libros:", error);
-
-    // Debugging adicional
-    if (error.message) {
-      console.error("Mensaje de error:", error.message);
-    }
-    if (error.logs) {
-      console.error("Logs del programa:", error.logs);
-    }
-  }
+  console.log("\n── Wishlists ────────────────────────────────");
+  const wishlists = await pg.program.account.wishlist.all();
+  wishlists.forEach((wl) => {
+    console.log("Owner:", wl.account.owner.toBase58());
+    console.log("Wallpapers guardados:", wl.account.wallpapers.length);
+    wl.account.wallpapers.forEach((w, i) => {
+      console.log(`  ${i + 1}.`, w.toBase58());
+    });
+    console.log("────────────────────────────────────────────");
+  });
 }
-
-// crearBiblioteca(n_biblioteca);
-// agregarLibro("El alquimista", 255);
-// eliminarLibro("El alquimista");
-// cambiarEstado("El alquimista");
-// verLibros(n_biblioteca);
-
-// solana confirm -v <txHash>
