@@ -9,7 +9,7 @@
 const ACCION = "fetchAll";
 
 // ── Dirección del wallpaper (se obtiene después de listWallpaper) ─
-const WALLPAPER_ADDRESS = "CpojyhaDnwPKWFGDCMWogKsk5cbyiTYdKUjH3YBVrqD";
+const WALLPAPER_ADDRESS = "8TgygibtP1e1Hh3bRf9FrqbnhYeRFZRzqhFBszj4x6Yj";
 
 // ─────────────────────────────────────────────────────────────────
 // Derivar PDAs
@@ -37,7 +37,7 @@ console.log("──────────────────────�
 // ─────────────────────────────────────────────────────────────────
 if (ACCION === "createCreator") {
   const tx = await pg.program.methods
-    .createCreator("Lamborghini Gallardo 2005")
+    .createCreator("Suprenmus")
     .accounts({
       artista: pg.wallet.publicKey,
       creador: creadorPDA,
@@ -69,8 +69,8 @@ if (ACCION === "listWallpaper") {
 
   const tx = await pg.program.methods
     .listWallpaper(
-      "Cyberpunk Night",       // título
-      "Cyberpunk 2077",        // juego
+      "1995 Mazda MX-5",       // título
+      "Forza Horizon 6",        // juego
       new BN(50000000),        // precio: 0.05 SOL en lamports
       new BN(100),             // ediciones totales
       "https://arweave.net/test" // URI de la imagen
