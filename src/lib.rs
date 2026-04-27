@@ -2,7 +2,7 @@ use anchor_lang::prelude::*; // Importa todo lo necesario de Anchor (macros, tra
 
 // El Program ID es la dirección única de tu programa en la blockchain de Solana.
 // Este valor lo genera Anchor automáticamente y debe coincidir con el keypair del programa.
-declare_id!("8kZC36vAknnDvuGcU6fSmw5GGHgNUpGv4Nf2pvTuS2Zg");
+declare_id!("6BdXkhaUCtoeSZpbAjgYSdWBT6F6ra6vsrpWQ6sHAwFu");
 
 // La macro #[program] marca este módulo como el punto de entrada del programa.
 // Todas las funciones públicas dentro de este módulo son las "instrucciones" que
